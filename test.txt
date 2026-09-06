@@ -1,0 +1,8 @@
+PROJECT URL
+https://ovwqzrjztgiaichbgbun.supabase.co
+
+PUBLISHABLE KEY
+sb_publishable_aAG76hXImivrWXlRQ-GYBQ_o3NSj7WB
+
+SECRET KEY
+postgresql://postgres:[SuzukiSwift2016]@db.ovwqzrjztgiaichbgbun.supabase.co:5432/postgres

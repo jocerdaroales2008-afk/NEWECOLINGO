@@ -1,0 +1,34 @@
+# Archivos cambiados respecto del ZIP original
+
+Files /mnt/data/ecolingo_inspect/TP21ECOLINGO-main/.env.example and ./.env.example differ
+Only in .: .github
+Only in .: CAMBIOS_ARCHIVOS.txt
+Only in .: ECOLINGO_IMPLEMENTACION.md
+Files /mnt/data/ecolingo_inspect/TP21ECOLINGO-main/README.md and ./README.md differ
+Files /mnt/data/ecolingo_inspect/TP21ECOLINGO-main/eslint.config.js and ./eslint.config.js differ
+Files /mnt/data/ecolingo_inspect/TP21ECOLINGO-main/index.html and ./index.html differ
+Files /mnt/data/ecolingo_inspect/TP21ECOLINGO-main/package.json and ./package.json differ
+Only in ./public: apple-touch-icon.png
+Only in ./public: favicon.png
+Only in ./public: icon-maskable.svg
+Only in /mnt/data/ecolingo_inspect/TP21ECOLINGO-main/public: manifest.webmanifest
+Only in ./public: pwa-192x192.png
+Only in ./public: pwa-512x512.png
+Only in ./public: pwa-maskable-512x512.png
+Only in /mnt/data/ecolingo_inspect/TP21ECOLINGO-main/public: sw.js
+Only in .: scripts
+Files /mnt/data/ecolingo_inspect/TP21ECOLINGO-main/seed_mma_chile.js and ./seed_mma_chile.js differ
+Files /mnt/data/ecolingo_inspect/TP21ECOLINGO-main/src/App.tsx and ./src/App.tsx differ
+Files /mnt/data/ecolingo_inspect/TP21ECOLINGO-main/src/components/CameraScanner.tsx and ./src/components/CameraScanner.tsx differ
+Files /mnt/data/ecolingo_inspect/TP21ECOLINGO-main/src/components/EcoMascota.tsx and ./src/components/EcoMascota.tsx differ
+Files /mnt/data/ecolingo_inspect/TP21ECOLINGO-main/src/components/MapView.tsx and ./src/components/MapView.tsx differ
+Files /mnt/data/ecolingo_inspect/TP21ECOLINGO-main/src/data/recyclingData.ts and ./src/data/recyclingData.ts differ
+Files /mnt/data/ecolingo_inspect/TP21ECOLINGO-main/src/hooks/useSpeech.ts and ./src/hooks/useSpeech.ts differ
+Files /mnt/data/ecolingo_inspect/TP21ECOLINGO-main/src/index.css and ./src/index.css differ
+Files /mnt/data/ecolingo_inspect/TP21ECOLINGO-main/src/main.tsx and ./src/main.tsx differ
+Only in /mnt/data/ecolingo_inspect/TP21ECOLINGO-main/src/services: googlePlacesService.ts
+Files /mnt/data/ecolingo_inspect/TP21ECOLINGO-main/src/services/officialRecyclingPoints.ts and ./src/services/officialRecyclingPoints.ts differ
+Only in ./src/services: productBarcode.ts
+Files /mnt/data/ecolingo_inspect/TP21ECOLINGO-main/src/types.ts and ./src/types.ts differ
+Only in .: supabase
+Files /mnt/data/ecolingo_inspect/TP21ECOLINGO-main/vite.config.ts and ./vite.config.ts differ
