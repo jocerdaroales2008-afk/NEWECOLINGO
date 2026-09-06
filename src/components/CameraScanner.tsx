@@ -24,6 +24,10 @@ import {
 } from '@/data/recyclingData';
 import { getBarcodeProductEvidence } from '@/services/productBarcode';
 import {
+  classifyImageWithAI,
+  isAiVisionConfigured,
+} from '@/services/aiVision';
+import {
   MATERIAL_COLORS,
   MATERIAL_LABELS,
   type MaterialCategory,
@@ -35,7 +39,7 @@ import * as tf from '@tensorflow/tfjs';
 
 type ScanPhase = 'idle' | 'camera' | 'scanning' | 'result';
 type FacingMode = 'environment' | 'user';
-type EvidenceSource = 'barcode' | 'vision' | null;
+type EvidenceSource = 'ai' | 'barcode' | 'vision' | null;
 
 type MobileNetPrediction = {
   className: string;
@@ -55,6 +59,16 @@ const CATEGORIES: readonly MaterialCategory[] = [
 ];
 
 const ANALYSIS_TIMEOUT_MS = 20_000;
+
+/**
+ * Umbrales del modelo multimodal remoto.
+ *
+ * Por debajo de AI_MIN_CONFIDENCE la propuesta solo se ofrece como sugerencia
+ * a confirmar; nunca se preselecciona automáticamente.
+ */
+const AI_MIN_CONFIDENCE = 0.6;
+const AI_CONFIDENT_THRESHOLD = 0.78;
+const AI_ENABLED = isAiVisionConfigured();
 const CAMERA_WIDTH = 1280;
 const CAMERA_HEIGHT = 720;
 
@@ -346,7 +360,7 @@ export function CameraScanner({
          * Cada proceso tiene timeout para impedir que la UI
          * quede eternamente mostrando "Analizando material...".
          */
-        const [productEvidence, visionAttempt] =
+        const [productEvidence, visionAttempt, aiEvidence] =
           await Promise.all([
             withTimeout(
               getBarcodeProductEvidence(image),
@@ -383,6 +397,25 @@ export function CameraScanner({
                   failed: true,
                 };
               }),
+
+            /**
+             * Modelo multimodal remoto (NVIDIA Build).
+             *
+             * Es opcional: si no hay proxy configurado devuelve null y el
+             * escáner sigue operando con MobileNet y el código de barras.
+             */
+            withTimeout(
+              classifyImageWithAI(image),
+              ANALYSIS_TIMEOUT_MS,
+              'Tiempo de espera agotado en la clasificación por IA.',
+            ).catch((aiError) => {
+              console.warn(
+                'IA remota no disponible:',
+                aiError,
+              );
+
+              return null;
+            }),
           ]);
 
         if (!mountedRef.current) return;
@@ -450,9 +483,107 @@ export function CameraScanner({
 
         /**
          * PRIORIDAD 1:
-         * evidencia conocida proveniente del código de barras.
+         * modelo multimodal remoto.
+         *
+         * Es la evidencia mejor informada, pero se sigue contrastando con el
+         * código de barras: si discrepan, pedimos confirmación manual.
          */
         if (
+          aiEvidence &&
+          aiEvidence.confidence >=
+            AI_MIN_CONFIDENCE
+        ) {
+          const aiItem = createCategoryItem(
+            aiEvidence.category,
+            aiEvidence.objectName ||
+              MATERIAL_LABELS[
+                aiEvidence.category
+              ],
+          );
+
+          const barcodeAgrees =
+            barcodeResult?.item?.category ===
+            aiEvidence.category;
+
+          const barcodeConflicts = Boolean(
+            barcodeResult?.item &&
+              barcodeResult.status ===
+                'confident' &&
+              barcodeResult.item.category !==
+                aiEvidence.category,
+          );
+
+          source = 'ai';
+          displayedConfidence =
+            aiEvidence.confidence;
+
+          if (
+            barcodeConflicts &&
+            barcodeResult?.item
+          ) {
+            const categories = [
+              aiEvidence.category,
+              barcodeResult.item.category,
+            ];
+
+            guardedResult = {
+              status: 'uncertain',
+              confidence:
+                aiEvidence.confidence,
+              item: aiItem,
+              alternatives: categories.map(
+                (category, index) => ({
+                  category,
+                  score: 2 - index,
+                  label:
+                    MATERIAL_LABELS[category],
+                }),
+              ),
+              reason:
+                'La IA y los datos del envase indican materiales diferentes. Confirma manualmente el material principal.',
+            };
+          } else {
+            const reliable =
+              barcodeAgrees ||
+              aiEvidence.confidence >=
+                AI_CONFIDENT_THRESHOLD;
+
+            guardedResult = {
+              status: reliable
+                ? 'confident'
+                : 'uncertain',
+              confidence: barcodeAgrees
+                ? Math.max(
+                    aiEvidence.confidence,
+                    0.9,
+                  )
+                : aiEvidence.confidence,
+              item: aiItem,
+              alternatives: [
+                {
+                  category:
+                    aiEvidence.category,
+                  score: 2,
+                  label:
+                    MATERIAL_LABELS[
+                      aiEvidence.category
+                    ],
+                },
+              ],
+              reason:
+                aiEvidence.reason ||
+                (reliable
+                  ? 'La IA reconoció el material de la imagen. Verifícalo antes de reciclar.'
+                  : 'La IA propone una categoría con dudas. Confirma el material antes de continuar.'),
+            };
+          }
+        }
+
+        /**
+         * PRIORIDAD 2:
+         * evidencia conocida proveniente del código de barras.
+         */
+        else if (
           barcodeResult?.item &&
           barcodeResult.status === 'confident'
         ) {
@@ -524,8 +655,8 @@ export function CameraScanner({
         }
 
         /**
-         * PRIORIDAD 2:
-         * evidencia visual suficientemente buena.
+         * PRIORIDAD 3:
+         * evidencia visual local suficientemente buena.
          */
         else if (
           visualConfidence >= 0.62 &&
@@ -548,7 +679,45 @@ export function CameraScanner({
         }
 
         /**
-         * PRIORIDAD 3:
+         * PRIORIDAD 4:
+         * la IA respondió por debajo del umbral.
+         *
+         * La ofrecemos como sugerencia a confirmar, nunca como
+         * resultado automático.
+         */
+        else if (aiEvidence) {
+          source = 'ai';
+          displayedConfidence =
+            aiEvidence.confidence;
+
+          guardedResult = {
+            status: 'uncertain',
+            confidence: aiEvidence.confidence,
+            item: createCategoryItem(
+              aiEvidence.category,
+              aiEvidence.objectName ||
+                MATERIAL_LABELS[
+                  aiEvidence.category
+                ],
+            ),
+            alternatives: [
+              {
+                category: aiEvidence.category,
+                score: 1,
+                label:
+                  MATERIAL_LABELS[
+                    aiEvidence.category
+                  ],
+              },
+            ],
+            reason:
+              aiEvidence.reason ||
+              'La IA no está segura del material. Confirma la categoría antes de continuar.',
+          };
+        }
+
+        /**
+         * PRIORIDAD 5:
          * no existe evidencia fiable.
          *
          * Nunca convertimos automáticamente lo desconocido
@@ -585,7 +754,9 @@ export function CameraScanner({
         setModelConfidence(displayedConfidence);
         setEvidenceSource(source);
         setDetectedProduct(
-          productEvidence?.productName ?? '',
+          productEvidence?.productName ||
+            aiEvidence?.objectName ||
+            '',
         );
         setPhase('result');
       } catch (analysisError) {
@@ -833,6 +1004,12 @@ export function CameraScanner({
             confirmas cuando exista duda.
           </p>
 
+          <p className="mt-1 text-xs text-[var(--eco-text-muted)]">
+            {AI_ENABLED
+              ? 'Análisis remoto activo, complementado con el modelo local y el código de barras.'
+              : 'Análisis local (MobileNet y código de barras). Configura NVIDIA_API_KEY para activar el modelo remoto.'}
+          </p>
+
           {error && (
             <p className="mt-2 text-sm text-red-600 dark:text-red-400">
               {error}
@@ -1035,17 +1212,19 @@ export function CameraScanner({
 
                   {detectedProduct && (
                     <p className="mt-1 text-xs font-semibold text-[var(--eco-text-muted)]">
-                      Producto:{' '}
+                      Detectado:{' '}
                       {detectedProduct}
                     </p>
                   )}
 
                   {modelConfidence > 0 && (
                     <p className="mt-1 text-xs text-[var(--eco-text-muted)]">
-                      {evidenceSource ===
-                      'barcode'
-                        ? 'Confianza de metadata del envase'
-                        : 'Mejor evidencia visual'}
+                      {evidenceSource === 'ai'
+                        ? 'Confianza del modelo de IA'
+                        : evidenceSource ===
+                            'barcode'
+                          ? 'Confianza de metadata del envase'
+                          : 'Mejor evidencia visual'}
                       :{' '}
                       {Math.round(
                         modelConfidence *

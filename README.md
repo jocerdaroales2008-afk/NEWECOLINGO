@@ -91,7 +91,54 @@ MobileNet/ImageNet se conserva únicamente como **señal visual auxiliar**. No e
 - trata los metadatos de envases multimaterial como evidencia ambigua que requiere confirmación;
 - libera los `MediaStreamTrack` al cerrar o terminar una captura.
 
-La consulta por código de barras es un complemento y depende de que el producto tenga metadatos de envase disponibles. Para una clasificación visual realmente especializada sigue siendo necesario entrenar/evaluar y desplegar un modelo de residuos con un dataset representativo de las categorías de EcoLingo.
+La consulta por código de barras es un complemento y depende de que el producto tenga metadatos de envase disponibles.
+
+## Clasificación con IA (NVIDIA Build)
+
+El escáner combina tres fuentes de evidencia: el modelo multimodal remoto, el código de barras y MobileNet en el dispositivo. La IA remota es opcional: si no está configurada, el escáner sigue funcionando con las otras dos.
+
+La clave `nvapi-...` **nunca llega al navegador**. El frontend siempre habla con un proxy que la añade del lado del servidor.
+
+### 1. Obtener la clave
+
+Crea una API key en [build.nvidia.com](https://build.nvidia.com) (formato `nvapi-...`).
+
+### 2. Desarrollo local
+
+Añade a tu `.env`:
+
+```env
+NVIDIA_API_KEY=nvapi-TU_CLAVE
+```
+
+`vite.config.ts` levanta un proxy en `/api/nvidia` que inyecta la cabecera `Authorization` en el proceso de Node. La variable no lleva prefijo `VITE_`, así que no entra en el bundle.
+
+### 3. Producción
+
+Despliega la Edge Function incluida:
+
+```bash
+supabase secrets set NVIDIA_API_KEY=nvapi-TU_CLAVE
+supabase functions deploy ai-classify
+```
+
+El cliente usa por defecto `${VITE_SUPABASE_URL}/functions/v1/ai-classify`. Si prefieres otro proxy (Cloudflare Worker, Vercel, etc.), indícalo con `VITE_AI_PROXY_URL`.
+
+### Modelo
+
+Por defecto `meta/llama-3.2-90b-vision-instruct`. Se cambia con `VITE_NVIDIA_MODEL`; la Edge Function acepta solo una lista blanca de modelos de visión para que no pueda usarse como proxy abierto.
+
+### Cómo se combina la evidencia
+
+| Prioridad | Fuente | Resultado |
+| --- | --- | --- |
+| 1 | IA con confianza ≥ 0.6 | `confident` si ≥ 0.78 o si coincide con el código de barras; si discrepan, `uncertain` |
+| 2 | Código de barras (Open Food Facts) | Como antes de la integración |
+| 3 | MobileNet local con confianza ≥ 0.62 | Sugerencia visual |
+| 4 | IA con confianza < 0.6 | Sugerencia a confirmar, nunca preseleccionada |
+| 5 | Sin evidencia | `unknown`; el usuario elige la categoría |
+
+La preselección automática sigue ocurriendo solo cuando el resultado es `confident`. Para una clasificación visual especializada sigue siendo recomendable entrenar y desplegar un modelo de residuos con un dataset representativo de las categorías de EcoLingo.
 
 ## Validación
 
