@@ -226,11 +226,32 @@
   font-family: inherit !important;
 }
 
+/*
+ * Leaflet posiciona sus panes y controles con z-index propios muy altos
+ * (400 los panes, 700 los popups, 1000 los controles). Sin un contexto de
+ * apilamiento propio esos valores compiten con el shell de la aplicación
+ * (header z-40, barra inferior z-40, modales y mascota z-50) y el mapa termina
+ * dibujándose por encima. `isolation: isolate` encierra toda esa escala dentro
+ * del contenedor, de modo que el mapa nunca puede solaparse con la interfaz.
+ */
 .map-shell {
+  position: relative;
+  isolation: isolate;
+  z-index: 0;
   overflow: hidden;
   border: 1px solid var(--eco-border);
   border-radius: 1rem;
   background: var(--eco-surface);
+}
+
+/* La atribución vive abajo a la derecha: reservamos ese carril para que el
+   botón flotante "Centrar en mí" no quede encima del texto legal. */
+.map-shell .leaflet-bottom.leaflet-right {
+  max-width: calc(100% - 11.5rem);
+}
+
+.map-shell .leaflet-control-attribution {
+  font-size: 10px;
 }
 
 .user-location-marker {
