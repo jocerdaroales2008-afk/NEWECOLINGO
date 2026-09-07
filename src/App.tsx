@@ -580,7 +580,10 @@ function MapPage() {
         <input className="eco-input pl-10" value={mapQuery} onChange={(event) => setMapQuery(event.target.value)} placeholder="Buscar por nombre, dirección, comuna o región..." aria-label="Buscar punto limpio" />
       </div>
 
-      <div className="flex gap-2 overflow-x-auto pb-1">
+      {/* Las categorías se ajustan en varias líneas en lugar de desplazarse en
+          horizontal: en un teléfono, el carrusel dejaba fuera de la vista la
+          mayoría de los filtros y recortaba las etiquetas al borde. */}
+      <div className="flex flex-wrap gap-2">
         {(['all', 'organico', 'vidrio', 'papel', 'plastico', 'pilas', 'raee', 'metal', 'textil', 'peligroso'] as const).map((item) => (
           <button key={item} onClick={() => setFilter(item)} className={`eco-chip ${filter === item ? 'active' : ''}`}>
             {item === 'all' ? 'Todos' : MATERIAL_LABELS[item]}
@@ -589,7 +592,6 @@ function MapPage() {
       </div>
 
       {searching && <p className="text-sm text-[var(--eco-text-muted)]">Cargando puntos oficiales del MMA...</p>}
-      {status === 'error' && error && <p className="text-sm text-red-600">{error}</p>}
       {searchError && <p className="text-sm text-red-600">{searchError}</p>}
       {!searching && points.length > 0 && <p className="text-xs text-[var(--eco-text-muted)]">{filtered.length} de {points.length} puntos visibles con los filtros actuales.</p>}
       {pointsStale && <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">Sin conexión con la fuente: mostrando la última copia guardada. Los datos pueden estar desactualizados.</p>}
@@ -658,6 +660,44 @@ function MapPage() {
   );
 }
 
+type ParsedCoordinates =
+  | { ok: true; lat: number | null; lng: number | null }
+  | { ok: false; message: string };
+
+/**
+ * El campo de coordenadas es opcional y la gente pega ahí lo que tiene a mano.
+ * Aceptamos "lat, lng" con coma, punto y coma o espacios, y rechazamos con un
+ * mensaje explícito lo que no son coordenadas (por ejemplo un Plus Code de
+ * Google Maps, que no podemos convertir sin geocodificar).
+ */
+function parseCoordinates(raw: string): ParsedCoordinates {
+  const value = raw.trim();
+  if (!value) return { ok: true, lat: null, lng: null };
+
+  const parts = value.split(/[;,\s]+/).filter(Boolean);
+  if (parts.length !== 2) {
+    return {
+      ok: false,
+      message: 'Escribe las coordenadas como "latitud, longitud" (por ejemplo -33.45, -70.66), o deja el campo vacío.',
+    };
+  }
+
+  const lat = Number(parts[0]);
+  const lng = Number(parts[1]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return {
+      ok: false,
+      message: 'Esas no son coordenadas numéricas. Si copiaste un código de Google Maps, deja el campo vacío: basta con la dirección.',
+    };
+  }
+
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+    return { ok: false, message: 'La latitud va entre -90 y 90, y la longitud entre -180 y 180.' };
+  }
+
+  return { ok: true, lat, lng };
+}
+
 function SuggestionModal({ onClose }: { onClose: () => void }) {
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
@@ -665,38 +705,46 @@ function SuggestionModal({ onClose }: { onClose: () => void }) {
   const [materials, setMaterials] = useState<MaterialCategory[]>(['papel', 'plastico']);
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState('');
+  const [feedbackKind, setFeedbackKind] = useState<'error' | 'success'>('error');
 
   const toggleMaterial = (material: MaterialCategory) => {
     setMaterials((current) => current.includes(material) ? current.filter((item) => item !== material) : [...current, material]);
   };
 
+  const fail = (message: string) => {
+    setFeedbackKind('error');
+    setFeedback(message);
+  };
+
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const [latText, lngText] = coordinates.split(',').map((value) => value.trim());
-    const lat = coordinates ? Number(latText) : null;
-    const lng = coordinates ? Number(lngText) : null;
-    if (!name.trim() || !address.trim() || (coordinates && (!Number.isFinite(lat) || !Number.isFinite(lng)))) {
-      setFeedback('Completa nombre, dirección y coordenadas con el formato latitud, longitud.');
-      return;
-    }
+
+    if (!name.trim()) return fail('Escribe el nombre del lugar.');
+    if (!address.trim()) return fail('Escribe la dirección del punto limpio.');
+
+    const parsed = parseCoordinates(coordinates);
+    if (!parsed.ok) return fail(parsed.message);
+    if (materials.length === 0) return fail('Selecciona al menos un material aceptado.');
+
     setSaving(true);
     setFeedback('');
     try {
-      await saveCommunitySuggestion({ name: name.trim(), address: address.trim(), lat, lng, materials });
+      await saveCommunitySuggestion({ name: name.trim(), address: address.trim(), lat: parsed.lat, lng: parsed.lng, materials });
+      setFeedbackKind('success');
       setFeedback('Sugerencia enviada para revisión. ¡Gracias por participar!');
       setName('');
       setAddress('');
       setCoordinates('');
     } catch (error) {
-      setFeedback(error instanceof Error ? error.message : 'No se pudo enviar la sugerencia.');
+      fail(error instanceof Error ? error.message : 'No se pudo enviar la sugerencia.');
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-labelledby="suggestion-title">
-      <form onSubmit={submit} className="w-full max-w-lg space-y-4 rounded-2xl bg-[var(--eco-card)] p-5 shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50 p-4" role="dialog" aria-modal="true" aria-labelledby="suggestion-title">
+      <form onSubmit={submit} className="my-auto w-full max-w-lg space-y-4 rounded-2xl bg-[var(--eco-card)] p-5 shadow-2xl">
         <div className="flex items-center justify-between gap-4">
           <h2 id="suggestion-title" className="text-xl font-extrabold">Sugerir Punto Limpio</h2>
           <button type="button" onClick={onClose} className="rounded-lg p-2" aria-label="Cerrar sugerencia"><X size={20} /></button>
@@ -712,7 +760,16 @@ function SuggestionModal({ onClose }: { onClose: () => void }) {
             ))}
           </div>
         </fieldset>
-        {feedback && <p className="text-sm text-[var(--eco-text-muted)]" role="status">{feedback}</p>}
+        {feedback && (
+          <p
+            className={`rounded-xl p-3 text-sm font-semibold ${feedbackKind === 'success'
+              ? 'bg-forest-50 text-forest-800 dark:bg-forest-950 dark:text-forest-200'
+              : 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-200'}`}
+            role="status"
+          >
+            {feedback}
+          </p>
+        )}
         <button type="submit" disabled={saving} className="eco-btn w-full">{saving ? 'Enviando...' : 'Enviar sugerencia'}</button>
       </form>
     </div>

@@ -172,6 +172,10 @@
 
   .eco-chip {
     display: inline-flex;
+    /* Sin esto, flexbox comprime los chips para que quepan en el ancho
+       disponible y recorta las etiquetas ("Plásti", "Orgáni") en lugar de
+       dejarlos desbordar y activar el scroll horizontal del contenedor. */
+    flex: none;
     align-items: center;
     gap: 0.375rem;
     padding: 0.5rem 1rem;
