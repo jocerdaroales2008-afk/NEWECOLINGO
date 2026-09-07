@@ -580,7 +580,10 @@ function MapPage() {
         <input className="eco-input pl-10" value={mapQuery} onChange={(event) => setMapQuery(event.target.value)} placeholder="Buscar por nombre, dirección, comuna o región..." aria-label="Buscar punto limpio" />
       </div>
 
-      <div className="flex gap-2 overflow-x-auto pb-1">
+      {/* Las categorías se ajustan en varias líneas en lugar de desplazarse en
+          horizontal: en un teléfono, el carrusel dejaba fuera de la vista la
+          mayoría de los filtros y recortaba las etiquetas al borde. */}
+      <div className="flex flex-wrap gap-2">
         {(['all', 'organico', 'vidrio', 'papel', 'plastico', 'pilas', 'raee', 'metal', 'textil', 'peligroso'] as const).map((item) => (
           <button key={item} onClick={() => setFilter(item)} className={`eco-chip ${filter === item ? 'active' : ''}`}>
             {item === 'all' ? 'Todos' : MATERIAL_LABELS[item]}
